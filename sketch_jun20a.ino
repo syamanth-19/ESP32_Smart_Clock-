@@ -90,7 +90,7 @@ int activeSatIDs[16] = {0};
 int activeSatSNRs[16] = {0}; 
 
 const char* targetSSID = "tp";
-const char* targetPASS = "55516884";
+const char* targetPASS = "5xxxxx8";
 
 const int DEBOUNCE_TIME = 35;
 const int LONG_PRESS_TIME = 1000;
