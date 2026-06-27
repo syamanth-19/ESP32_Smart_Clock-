@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Neon Telemetry</title>
+    <style>
+        /* === DARK NEON THEME (Cyan & Orange) === */
+        :root {
+            --bg-base: #050505;
+            --bg-glass: rgba(10, 10, 15, 0.85);
+            --neon-cyan: #00f3ff;
+            --neon-orange: #ff6600; /* Replaced the pink! */
+            --neon-lime: #39ff14;
+            --neon-alert: #ff2a2a;
+            --text-main: #e0e0e0;
+            --text-dim: #888;
+            --font-stack: 'Courier New', Courier, monospace; 
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--font-stack);
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 20px;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(0, 243, 255, 0.05), transparent 30%),
+                radial-gradient(circle at 90% 80%, rgba(255, 102, 0, 0.05), transparent 30%);
+        }
+
+        /* === TOP NAVIGATION === */
+        .cyber-nav {
+            background: var(--bg-glass);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 8px;
+            padding: 15px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2), inset 0 0 10px rgba(0, 243, 255, 0.1);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--neon-cyan);
+            text-shadow: 0 0 8px var(--neon-cyan);
+            text-transform: uppercase;
+        }
+
+        .status-orb {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--neon-alert);
+            box-shadow: 0 0 10px var(--neon-alert);
+            transition: all 0.3s ease;
+        }
+        .status-orb.active {
+            background: var(--neon-lime);
+            box-shadow: 0 0 15px var(--neon-lime), 0 0 30px var(--neon-lime);
+        }
+
+        .controls { display: flex; gap: 10px; flex-grow: 1; max-width: 450px; }
+        
+        .controls input {
+            flex-grow: 1;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            padding: 10px 16px;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-family: var(--font-stack);
+            outline: none;
+        }
+        .controls input:focus { box-shadow: 0 0 10px rgba(0, 243, 255, 0.5); }
+
+        .controls button {
+            background: transparent;
+            color: var(--neon-orange);
+            border: 1px solid var(--neon-orange);
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-family: var(--font-stack);
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 0 10px rgba(255, 102, 0, 0.2);
+        }
+        .controls button:hover {
+            background: var(--neon-orange);
+            color: #000;
+            box-shadow: 0 0 20px var(--neon-orange);
+        }
+
+        /* === DASHBOARD GRID === */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 25px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .cyber-card {
+            background: var(--bg-glass);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: 8px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+        .cyber-card::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+        }
+
+        .card-header {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--neon-orange);
+            text-shadow: 0 0 5px var(--neon-orange);
+            text-transform: uppercase;
+            border-bottom: 1px solid rgba(255, 102, 0, 0.3);
+            padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .data-list { display: flex; flex-direction: column; gap: 8px; }
+        .data-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px dashed rgba(255,255,255,0.1);
+        }
+        .data-item:last-child { border-bottom: none; }
+        .data-label { color: var(--text-dim); text-transform: uppercase; font-size: 0.85rem; }
+        .data-value { font-size: 1.1rem; font-weight: bold; color: var(--neon-cyan); }
+
+        /* === 16-SLOT RADAR GRID (Fixed!) === */
+        .sat-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .sat-slot {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: 4px;
+            padding: 12px 5px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        .sat-active {
+            background: rgba(0, 243, 255, 0.1);
+            border-color: var(--neon-cyan);
+            box-shadow: inset 0 0 10px rgba(0, 243, 255, 0.2);
+        }
+        .sat-id { display: block; font-weight: bold; font-size: 1.1rem; color: #fff; }
+        .sat-snr { display: block; font-size: 0.8rem; color: var(--text-dim); margin-top: 4px;}
+        
+        /* Dynamic SNR Colors */
+        .snr-high { border-color: var(--neon-lime); box-shadow: inset 0 0 10px rgba(57, 255, 20, 0.2); }
+        .snr-med { border-color: var(--neon-orange); box-shadow: inset 0 0 10px rgba(255, 102, 0, 0.2); }
+        .snr-low { border-color: var(--neon-alert); box-shadow: inset 0 0 10px rgba(255, 42, 42, 0.2); }
+
+        /* === RADAR MAP (INTERACTIVE) === */
+        .map-card { grid-column: 1 / -1; }
+        .canvas-wrapper {
+            width: 100%;
+            height: 500px;
+            background: #020202;
+            border: 1px solid var(--neon-cyan);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 0 30px rgba(0, 243, 255, 0.1);
+            cursor: grab;
+        }
+        .canvas-wrapper:active { cursor: grabbing; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .map-ui {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            text-shadow: 0 0 5px var(--neon-cyan);
+            backdrop-filter: blur(4px);
+        }
+        .map-origin-text { top: 10px; left: 10px; }
+        
+        .map-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .map-btn {
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid var(--neon-orange);
+            color: var(--neon-orange);
+            width: 40px; height: 40px;
+            font-size: 1.5rem; font-weight: bold;
+            border-radius: 4px; cursor: pointer;
+            box-shadow: 0 0 10px rgba(255, 102, 0, 0.2);
+            transition: all 0.2s;
+        }
+        .map-btn:hover { background: var(--neon-orange); color: black; box-shadow: 0 0 20px var(--neon-orange); }
+        .map-btn.reset { font-size: 0.9rem; width: auto; padding: 0 10px; height: 30px; }
+
+        @media (max-width: 768px) {
+            .cyber-nav { flex-direction: column; align-items: stretch; }
+            .controls { max-width: 100%; }
+            .canvas-wrapper { height: 400px; }
+            .sat-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="cyber-nav">
+        <div class="brand"><div class="status-orb" id="conn-status"></div> NEON_LINK</div>
+        <div class="controls">
+            <input type="text" id="ip-input" placeholder="IP (e.g. 192.168.1.50)">
+            <button onclick="toggleConnection()" id="conn-btn">INITIATE</button>
+        </div>
+    </nav>
+
+    <div class="dashboard-grid">
+        
+        <div class="cyber-card">
+            <div class="card-header">SYS_ENV <span id="val-up" style="font-size:0.8rem; color:var(--text-dim);">--s</span></div>
+            <div class="data-list">
+                <div class="data-item"><span class="data-label">Temp Core</span><span class="data-value" id="val-temp">--</span></div>
+                <div class="data-item"><span class="data-label">Atmosphere</span><span class="data-value" id="val-hum">--</span></div>
+                <div class="data-item"><span class="data-label">Wet Bulb</span><span class="data-value" id="val-wet">--</span></div>
+                <div class="data-item"><span class="data-label">LDR Optic</span><span class="data-value" id="val-ldr" style="color: var(--neon-orange);">--</span></div>
+                <div class="data-item"><span class="data-label">Mem Heap</span><span class="data-value" id="val-heap">--</span></div>
+            </div>
+        </div>
+
+        <div class="cyber-card">
+            <div class="card-header">SAT_LINK <span id="val-lock" style="font-size:0.8rem; color:var(--neon-alert);">NO FIX</span></div>
+            <div class="data-list">
+                <div class="data-item"><span class="data-label">Sat Count</span><span class="data-value" id="val-sats">0</span></div>
+                <div class="data-item"><span class="data-label">HDOP</span><span class="data-value" id="val-hdop">--</span></div>
+                <div class="data-item"><span class="data-label">LAT</span><span class="data-value" id="val-lat">--</span></div>
+                <div class="data-item"><span class="data-label">LON</span><span class="data-value" id="val-lon">--</span></div>
+                <div class="data-item"><span class="data-label">Velocity</span><span class="data-value" id="val-spd">-- km/h</span></div>
+            </div>
+        </div>
+
+        <div class="cyber-card">
+            <div class="card-header">SATELLITE ARRAY</div>
+            <div class="sat-grid" id="radar-container">
+                </div>
+        </div>
+
+        <div class="cyber-card map-card">
+            <div class="card-header">TACTICAL_GRID</div>
+            <div class="canvas-wrapper" id="canvas-container">
+                <canvas id="offline-map"></canvas>
+                <div class="map-ui map-origin-text" id="map-origin-text">AWAITING COORDS...</div>
+                
+                <div class="map-controls">
+                    <button class="map-btn reset" onclick="resetMap()">RESET</button>
+                    <button class="map-btn" onclick="adjustZoom(1.5)">+</button>
+                    <button class="map-btn" onclick="adjustZoom(0.66)">-</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // === INITIALIZE RADAR SLOTS ===
+        const radarContainer = document.getElementById('radar-container');
+        for(let i = 0; i < 16; i++) {
+            radarContainer.innerHTML += `
+                <div class="sat-slot" id="slot-${i}">
+                    <span class="sat-id">--</span>
+                    <span class="sat-snr">--</span>
+                </div>
+            `;
+        }
+
+        // === FETCH API LOGIC ===
+        let fetchInterval = null;
+        let isConnected = false;
+
+        function toggleConnection() {
+            const btn = document.getElementById('conn-btn');
+            const ip = document.getElementById('ip-input').value.trim();
+
+            if (isConnected) {
+                clearInterval(fetchInterval);
+                isConnected = false;
+                btn.innerText = "INITIATE";
+                btn.style.color = "var(--neon-orange)";
+                document.getElementById('conn-status').classList.remove('active');
+            } else {
+                if(!ip) return alert("ENTER VALID IP");
+                isConnected = true;
+                btn.innerText = "TERMINATE";
+                btn.style.color = "var(--neon-alert)";
+                btn.style.borderColor = "var(--neon-alert)";
+                btn.style.boxShadow = "0 0 10px rgba(255,0,0,0.3)";
+                
+                fetchData(ip);
+                fetchInterval = setInterval(() => fetchData(ip), 1000);
+            }
+        }
+
+        async function fetchData(ip) {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                const response = await fetch(`http://${ip}/api/telemetry`, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                if (!response.ok) throw new Error("Link broken");
+                
+                const data = await response.json();
+                document.getElementById('conn-status').classList.add('active');
+                
+                // Update Text UI
+                document.getElementById('val-temp').innerText = `${data.environment.temperature_c.toFixed(1)}°C`;
+                document.getElementById('val-hum').innerText = `${data.environment.humidity_percent.toFixed(1)}%`;
+                document.getElementById('val-wet').innerText = `${data.environment.wet_bulb_c.toFixed(1)}°C`;
+                document.getElementById('val-ldr').innerText = data.environment.ldr_digital_state === 0 ? "LIGHT" : "DARK";
+                document.getElementById('val-up').innerText = `UP:${Math.floor(data.system.uptime_ms/1000)}s`;
+                document.getElementById('val-heap').innerText = `${(data.system.free_heap_bytes/1024).toFixed(1)}k`;
+
+                const lockEl = document.getElementById('val-lock');
+                if (data.gps.has_lock) {
+                    lockEl.innerText = "LOCKED"; lockEl.style.color = "var(--neon-lime)";
+                    document.getElementById('val-lat').innerText = data.gps.latitude.toFixed(6);
+                    document.getElementById('val-lon').innerText = data.gps.longitude.toFixed(6);
+                    document.getElementById('val-spd').innerText = `${data.gps.speed_kmph.toFixed(1)} km/h`;
+                    updateOfflineMap(data.gps.latitude, data.gps.longitude);
+                } else {
+                    lockEl.innerText = "NO FIX"; lockEl.style.color = "var(--neon-alert)";
+                }
+                document.getElementById('val-sats').innerText = data.gps.satellites_connected;
+                document.getElementById('val-hdop').innerText = data.gps.hdop;
+
+                // Update Satellite Radar Array Colors
+                data.gps.sat_radar_array.forEach((sat, index) => {
+                    const slot = document.getElementById(`slot-${index}`);
+                    slot.className = 'sat-slot'; // Reset
+                    
+                    if (sat.id > 0) {
+                        slot.classList.add('sat-active');
+                        // Color coding based on SNR strength
+                        if (sat.snr > 30) slot.classList.add('snr-high');
+                        else if (sat.snr > 15) slot.classList.add('snr-med');
+                        else slot.classList.add('snr-low');
+                        
+                        slot.innerHTML = `<span class="sat-id">#${sat.id}</span><span class="sat-snr">SNR: ${sat.snr}</span>`;
+                    } else {
+                        slot.innerHTML = `<span class="sat-id">--</span><span class="sat-snr">--</span>`;
+                    }
+                });
+
+            } catch (err) {
+                document.getElementById('conn-status').classList.remove('active');
+            }
+        }
+
+        // === INTERACTIVE MAP ENGINE ===
+        const canvas = document.getElementById('offline-map');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        
+        let originLat = null, originLon = null;
+        let pathHistory = [];
+        let zoom = 2; // Pixels per meter
+        let panX = 0, panY = 0;
+        let isDragging = false;
+        let lastMouseX = 0, lastMouseY = 0;
+
+        function resizeCanvas() {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            renderMap();
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Map Listeners
+        canvas.addEventListener('mousedown', (e) => { isDragging = true; lastMouseX = e.clientX; lastMouseY = e.clientY; });
+        window.addEventListener('mouseup', () => isDragging = false);
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            panX += (e.clientX - lastMouseX);
+            panY += (e.clientY - lastMouseY);
+            lastMouseX = e.clientX; lastMouseY = e.clientY;
+            renderMap();
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1; 
+            adjustZoom(zoomFactor, e.offsetX, e.offsetY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if(e.touches.length === 1) {
+                isDragging = true; lastMouseX = e.touches[0].clientX; lastMouseY = e.touches[0].clientY;
+            }
+        }, {passive: false});
+
+        canvas.addEventListener('touchmove', (e) => {
+            if(!isDragging || e.touches.length !== 1) return;
+            e.preventDefault(); 
+            panX += (e.touches[0].clientX - lastMouseX); panY += (e.touches[0].clientY - lastMouseY);
+            lastMouseX = e.touches[0].clientX; lastMouseY = e.touches[0].clientY;
+            renderMap();
+        }, {passive: false});
+
+        window.addEventListener('touchend', () => isDragging = false);
+
+        function adjustZoom(factor, mouseX = canvas.width/2, mouseY = canvas.height/2) {
+            const newZoom = Math.max(0.1, Math.min(zoom * factor, 20));
+            if (newZoom === zoom) return;
+            const scaleChange = newZoom / zoom;
+            panX = mouseX - (mouseX - panX) * scaleChange;
+            panY = mouseY - (mouseY - panY) * scaleChange;
+            zoom = newZoom;
+            renderMap();
+        }
+
+        function resetMap() {
+            panX = 0; panY = 0; zoom = 2;
+            renderMap();
+        }
+
+        function updateOfflineMap(lat, lon) {
+            if (originLat === null) {
+                originLat = lat; originLon = lon;
+                document.getElementById('map-origin-text').innerText = `CTR: ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+            }
+
+            const METERS_PER_DEG_LAT = 111320; 
+            const metersPerDegLon = 40075000 * Math.cos(originLat * Math.PI / 180) / 360;
+            
+            const deltaXMeters = (lon - originLon) * metersPerDegLon;
+            const deltaYMeters = (lat - originLat) * METERS_PER_DEG_LAT; 
+
+            pathHistory.push({x: deltaXMeters, y: deltaYMeters});
+            if(pathHistory.length > 2000) pathHistory.shift(); 
+            
+            renderMap();
+        }
+
+        function renderMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.save();
+            ctx.translate(canvas.width / 2 + panX, canvas.height / 2 + panY);
+            
+            let ringSpacingMeters = 10;
+            if (zoom < 0.5) ringSpacingMeters = 100;
+            else if (zoom < 1.5) ringSpacingMeters = 50;
+
+            const ringSpacingPx = ringSpacingMeters * zoom;
+            
+            ctx.strokeStyle = 'rgba(0, 243, 255, 0.15)'; 
+            ctx.lineWidth = 1;
+            
+            for(let i = 1; i <= 10; i++) {
+                ctx.beginPath(); ctx.arc(0, 0, ringSpacingPx * i, 0, 2 * Math.PI); ctx.stroke();
+            }
+
+            ctx.strokeStyle = 'rgba(0, 243, 255, 0.4)';
+            ctx.beginPath(); ctx.moveTo(-1000, 0); ctx.lineTo(1000, 0); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, -1000); ctx.lineTo(0, 1000); ctx.stroke();
+
+            if (pathHistory.length > 1) {
+                ctx.beginPath();
+                ctx.strokeStyle = '#ff6600'; /* Trail is now Orange! */
+                ctx.lineWidth = 2;
+                ctx.moveTo(pathHistory[0].x * zoom, -pathHistory[0].y * zoom);
+                for(let i=1; i<pathHistory.length; i++) {
+                    ctx.lineTo(pathHistory[i].x * zoom, -pathHistory[i].y * zoom);
+                }
+                ctx.stroke();
+            }
+
+            if (pathHistory.length > 0) {
+                const current = pathHistory[pathHistory.length - 1];
+                const pxX = current.x * zoom;
+                const pxY = -current.y * zoom;
+
+                ctx.beginPath();
+                ctx.arc(pxX, pxY, 6, 0, 2 * Math.PI);
+                ctx.fillStyle = '#39ff14'; 
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#39ff14';
+                ctx.fill();
+                ctx.shadowBlur = 0; 
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+            
+            ctx.restore(); 
+            drawScaleUI(ringSpacingMeters);
+        }
+
+        function drawScaleUI(ringMeters) {
+            const scaleWidthPx = ringMeters * zoom;
+            const startX = 20;
+            const startY = canvas.height - 30;
+
+            ctx.strokeStyle = '#00f3ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(startX, startY - 10);
+            ctx.lineTo(startX, startY);
+            ctx.lineTo(startX + scaleWidthPx, startY);
+            ctx.lineTo(startX + scaleWidthPx, startY - 10);
+            ctx.stroke();
+
+            ctx.fillStyle = '#00f3ff';
+            ctx.font = '12px Courier New';
+            ctx.fillText(`${ringMeters} Meters`, startX + 5, startY - 5);
+        }
+
+        renderMap();
+    </script>
+</body>
+</html>
